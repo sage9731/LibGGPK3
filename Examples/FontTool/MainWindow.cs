@@ -107,7 +107,7 @@ public sealed partial class MainWindow : Form
         mainLayout.AddSpace();
         mainLayout.BeginVertical(spacing: new Size(DefaultSpacing, 0), yscale: false);
         mainLayout.BeginHorizontal(false);
-        mainLayout.Add(new Label { Text = "字体大小增减:", VerticalAlignment = VerticalAlignment.Center });
+        mainLayout.AddCentered(new Label { Text = "字体大小增减:", VerticalAlignment = VerticalAlignment.Center });
         fontSizeStepper = new NumericStepper()
         {
             MinValue = -10,
@@ -116,7 +116,15 @@ public sealed partial class MainWindow : Form
         };
         fontSizeStepper.GotFocus += (s, e) => { fontsListBox.Focus(); };
         mainLayout.Add(fontSizeStepper, xscale: false, yscale: false);
-        mainLayout.AddSpace(xscale: true);
+        LinkButton linkButton = new LinkButton
+        {
+            Text = "Visit Github",
+        };
+        linkButton.Click += (s, e) =>
+        {
+            Application.Instance.Open("https://github.com/sage9731/LibGGPK3");
+        };
+        mainLayout.AddCentered(linkButton, xscale: true);
         confirmButton = new Button
         {
             Text = "应用"
