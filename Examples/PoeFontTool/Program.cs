@@ -2,7 +2,7 @@
 
 using Eto.Forms;
 
-namespace FontTool;
+namespace PoeFontTool;
 
 public static class Program
 {

@@ -10,7 +10,7 @@ using LibBundledGGPK3;
 using LibGGPK3;
 using OpenFileDialog = Eto.Forms.OpenFileDialog;
 
-namespace FontTool;
+namespace PoeFontTool;
 
 public sealed partial class MainWindow : Form
 {

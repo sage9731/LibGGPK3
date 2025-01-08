@@ -38,7 +38,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		README.md = README.md
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FontTool", "Examples\FontTool\FontTool.csproj", "{F401B8C5-E425-438F-B49A-02295139199E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PoeFontTool", "Examples\PoeFontTool\PoeFontTool.csproj", "{F401B8C5-E425-438F-B49A-02295139199E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
