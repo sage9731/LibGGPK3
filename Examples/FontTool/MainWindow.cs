@@ -21,6 +21,8 @@ public sealed partial class MainWindow : Form
     private readonly List<string> UiSettingPaths = [
         "metadata/ui/uisettings.xml",
         "metadata/ui/uisettings.console.xml",
+        "metadata/ui/uisettings.tencent.xml",
+        "metadata/ui/uisettings.traditional chinese.xml",
     ];
 
     private readonly TextBox pathTextBox;
@@ -39,7 +41,7 @@ public sealed partial class MainWindow : Form
 
     public MainWindow()
     {
-        Title = "POE2字体修改工具";
+        Title = "POE字体修改工具（同时支持POE1/2）";
         Size = new Size(450, 428);
         Resizable = false;
 
@@ -66,7 +68,7 @@ public sealed partial class MainWindow : Form
         pathTextBox = new TextBox
         {
             ReadOnly = true,
-            PlaceholderText = "选择 PathOfExile2/Content.ggpk"
+            PlaceholderText = "选择 Content.ggpk"
         };
         mainLayout.Add(pathTextBox, xscale: true, yscale: false);
         var selectGgpkButton = new Button
@@ -77,7 +79,7 @@ public sealed partial class MainWindow : Form
         {
             var dialog = new OpenFileDialog
             {
-                Title = "选择 PathOfExile2/Content.ggpk",
+                Title = "选择 Content.ggpk",
                 Filters = { new FileFilter("Content.ggpk", "*.ggpk") },
             };
             var dialogResult = dialog.ShowDialog(this);
@@ -188,7 +190,7 @@ public sealed partial class MainWindow : Form
             return;
         }
         var fontSizeDiff = GetFontSizeDiff();
-        MessageBox.Show(this, "1. 此工具开源免费，基于aianlinb的LibGGPK3项目\n2. 替换字体时请保持客户端和其他补丁工具关闭，否则会报错\n3. 每次更新游戏或者打游戏补丁之后都需要重新替换字体\n4. 任何修改游戏文件的行为都有可能导致封号，用别怕，怕别用", "提示");
+        MessageBox.Show(this, "1. 本工具开源免费\n\n2. 替换字体时请关闭游戏客户端和其他补丁工具，否则会报错\n\n3. 每次更新游戏或者打游戏补丁之后需要重新替换字体\n\n4. 任何修改游戏文件的行为都有可能导致封号，用别怕，怕别用", "提示");
 
         confirmButton.Enabled = false;
         BundledGGPK? ggpk = null;
