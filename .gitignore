@@ -402,3 +402,5 @@ FodyWeavers.xsd
 
 # oo2core libraries
 oo2core/
+
+.idea
