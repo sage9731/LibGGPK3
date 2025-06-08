@@ -30,6 +30,8 @@ public partial class Program
 
     private static readonly string MinimapVisibilityPixelPath = "shaders/minimap_visibility_pixel.hlsl";
 
+    private static readonly string CameraZoomNodePath = "metadata/characters/character.ot";
+
     [GeneratedRegex("fonts=\".*?\"")]
     private static partial Regex FontsRegex();
 
@@ -60,14 +62,14 @@ public partial class Program
             "Relative font size adjustment (positive values increase size, negative values decrease size)");
         var removeMinimapFogOption = new Option<bool?>(aliases: ["--remove-minimap-fog"],
             description: "whether remove minimap fog");
-        var cameraDistanceOption =
-            new Option<float?>(aliases: ["--camera-distance"], description: "change camera distance");
+        var cameraZoomOption =
+            new Option<float?>(aliases: ["--camera-zoom"], description: "change camera zoom");
         patchGgpkCommand.Add(ggpkPathOption);
         patchGgpkCommand.Add(patchOption);
         patchGgpkCommand.Add(fontOption);
         patchGgpkCommand.Add(fontSizeAdjustOption);
         patchGgpkCommand.Add(removeMinimapFogOption);
-        patchGgpkCommand.Add(cameraDistanceOption);
+        patchGgpkCommand.Add(cameraZoomOption);
         rootCommand.Add(patchGgpkCommand);
 
         patchGgpkCommand.SetHandler(async (context) =>
@@ -77,7 +79,7 @@ public partial class Program
             var font = context.ParseResult.GetValueForOption(fontOption);
             var fontSizeAdjust = context.ParseResult.GetValueForOption(fontSizeAdjustOption);
             var removeMinimapFog = context.ParseResult.GetValueForOption(removeMinimapFogOption);
-            var cameraDistance = context.ParseResult.GetValueForOption(cameraDistanceOption);
+            var cameraZoom = context.ParseResult.GetValueForOption(cameraZoomOption);
 
             BundledGGPK? ggpk = null;
             try
@@ -94,7 +96,7 @@ public partial class Program
                 }
 
                 var whetherModifyUiSetting = !string.IsNullOrWhiteSpace(font);
-                if (whetherModifyUiSetting || removeMinimapFog.HasValue || cameraDistance.HasValue)
+                if (whetherModifyUiSetting || removeMinimapFog.HasValue || cameraZoom.HasValue)
                 {
                     var readOnlyDictionary = ggpk.Index.Files;
                     foreach (var (key, fileRecord) in readOnlyDictionary)
@@ -102,7 +104,8 @@ public partial class Program
                         var fileRecordPath = fileRecord.Path;
                         if (string.IsNullOrEmpty(fileRecordPath)) continue;
                         if ((!UiSettingPaths.Contains(fileRecordPath) || !whetherModifyUiSetting) &&
-                            (!MinimapVisibilityPixelPath.Equals(fileRecordPath) || !removeMinimapFog.HasValue))
+                            (!MinimapVisibilityPixelPath.Equals(fileRecordPath) || !removeMinimapFog.HasValue) &&
+                            (!CameraZoomNodePath.Equals(fileRecordPath) || !cameraZoom.HasValue))
                             continue;
                         if (whetherModifyUiSetting && UiSettingPaths.Contains(fileRecordPath))
                         {
@@ -166,6 +169,39 @@ public partial class Program
                                 lines[index] = removeMinimapFog.Value
                                     ? "\t\tres_color = float4(0.17f, 0.0f, 0.0f, 1.0f);"
                                     : "\t\tres_color = float4(0.0f, 0.0f, 0.0f, 1.0f);";
+                                var newFileContent = string.Join("\r\n", lines);
+                                var outBytes = encoding.GetBytes(newFileContent);
+                                fileRecord.Write(outBytes);
+                            }
+                        }
+
+                        if (cameraZoom.HasValue && CameraZoomNodePath.Equals(fileRecordPath))
+                        {
+                            var bytes = fileRecord.Read().ToArray();
+                            var encoding = Encoding.GetEncoding("utf-16le");
+                            var fileContent = encoding.GetString(bytes);
+                            var lines = new List<string>(fileContent.Split("\r\n"));
+                            var index = lines.FindIndex(line => line.Contains("team = 1")) + 1;
+                            if (index > 0)
+                            {
+                                var line = lines[index];
+                                if (cameraZoom < 1)
+                                {
+                                    cameraZoom = 1;
+                                }
+                                if (cameraZoom > 3)
+                                {
+                                    cameraZoom = 3;
+                                }
+                                var script = $"on_initial_position_set = \"CreateCameraZoomNode(1000000000.0f, 1000000000.0f, {cameraZoom.Value}f);\"";
+                                if (line.Contains("CreateCameraZoomNode"))
+                                {
+                                    lines[index] = script;
+                                }
+                                else
+                                {
+                                    lines.Insert(index, script);
+                                }
                                 var newFileContent = string.Join("\r\n", lines);
                                 var outBytes = encoding.GetBytes(newFileContent);
                                 fileRecord.Write(outBytes);
