@@ -318,15 +318,18 @@ public partial class Program
         }
 
         using var key = Registry.CurrentUser.OpenSubKey(foldersKey);
-        var value = "TENCENT".Equals(platform)
-            ? key?.GetValue("InstallPath")
-            : key?.GetValue("InstallLocation");
+        var value = "TENCENT".Equals(platform) ? key?.GetValue("InstallPath"): key?.GetValue("InstallLocation");
         if (value is not string s) return null;
         if (!value.ToString()!.EndsWith(Path.DirectorySeparatorChar.ToString()))
         {
             value += Path.DirectorySeparatorChar.ToString();
         }
-        var ggpk = value + "PackCheck.exe";
-        return File.Exists(ggpk) ? value.ToString() : null;
+        var ggpk = value + "Content.ggpk";
+        if (File.Exists(ggpk))
+        {
+            return ggpk;
+        }
+        var indexBin = value + "Bundles2\\_.index.bin";
+        return File.Exists(indexBin) ? indexBin : null;
     }
 }
