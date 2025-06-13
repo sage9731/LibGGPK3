@@ -97,21 +97,20 @@ public partial class Program
             var cameraZoom = context.ParseResult.GetValueForOption(cameraZoomOption);
 
             BundledGGPK? ggpk = null;
-            LibBundle3.Index index = null;
+            LibBundle3.Index index = null;                
+            var disposed = false;
             try
             {
                 Console.WriteLine($"正在读取 {path.FullName}");
                 if (path.FullName.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
                 {
-                    index = new LibBundle3.Index(path.FullName);
+                    index = await Task.Run(() => new LibBundle3.Index(path.FullName));
                 }
                 else
                 {
-                    ggpk = new BundledGGPK(path.FullName, false);
+                    ggpk = await Task.Run(() => new BundledGGPK(path.FullName, false));
                     index = ggpk.Index;
                 }
-                index.ParsePaths();
-
                 if (patchArray != null)
                 {
                     foreach (var patch in patchArray)
@@ -123,36 +122,34 @@ public partial class Program
                             try
                             {
                                 var total = zip.Entries.Count(e => !e.FullName.EndsWith('/'));
-                                await Task.Run(() =>
+                                if (zip.Entries.Any(e =>
+                                        e.FullName.Equals("Bundles2/_.index.bin",
+                                            StringComparison.OrdinalIgnoreCase)))
                                 {
-                                    if (zip.Entries.Any(e =>
-                                            e.FullName.Equals("Bundles2/_.index.bin",
-                                                StringComparison.OrdinalIgnoreCase)))
+                                    if (ggpk is null)
                                     {
-                                        if (ggpk is null)
-                                        {
-                                            zip.ExtractToDirectory(
-                                                Path.GetDirectoryName(Path.GetDirectoryName(path.FullName))!, true);
-                                            total = 0;
-                                        }
-                                        else
-                                        {
-                                            total -= GGPK.Replace(ggpk.Root, zip.Entries, (fr, p, added) =>
-                                            {
-                                                Console.WriteLine($"{(added ? "已添加: " : "已替换: ")}{p}");
-                                                return false;
-                                            }, allowAdd: true);
-                                        }
+                                        zip.ExtractToDirectory(
+                                            Path.GetDirectoryName(Path.GetDirectoryName(path.FullName))!, true);
+                                        total = 0;
                                     }
                                     else
                                     {
-                                        total -= LibBundle3.Index.Replace(index, zip.Entries, (fr, p) =>
+                                        total -= GGPK.Replace(ggpk.Root, zip.Entries, (fr, p, added) =>
                                         {
-                                            Console.WriteLine($"已替换: {p}");
+                                            Console.WriteLine($"{(added ? "已添加: " : "已替换: ")}{p}");
                                             return false;
-                                        });
+                                        }, allowAdd: true);
                                     }
-                                });
+                                }
+                                else
+                                {
+                                    total -= LibBundle3.Index.Replace(index, zip.Entries, (fr, p) =>
+                                    {
+                                        Console.WriteLine($"已替换: {p}");
+                                        return false;
+                                    });
+                                }
+
                                 Console.WriteLine(total > 0 ? $"错误: {total} 个文件应用失败！" : $"补丁 {patch.Name} 应用成功");
                             }
                             finally
@@ -165,12 +162,30 @@ public partial class Program
                             Console.WriteLine($"补丁 {patch.FullName} 不存在，已跳过");
                         }
                     }
+
+                    disposed = true;
+                    ggpk?.Dispose();
+                    index?.Dispose();
                 }
 
                 var fontIsEmpty = string.IsNullOrWhiteSpace(font);
                 var whetherModifyUiSetting = !fontIsEmpty || (fontSizeDelta.HasValue && fontSizeDelta.Value != 0);
                 if (whetherModifyUiSetting || removeMinimapFog.HasValue || cameraZoom.HasValue)
                 {
+                    if (disposed)
+                    {
+                        if (path.FullName.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
+                        {
+                            index = await Task.Run(() => new LibBundle3.Index(path.FullName));
+                        }
+                        else
+                        {
+                            ggpk = await Task.Run(() => new BundledGGPK(path.FullName, false));
+                            index = ggpk.Index;
+                        }
+                        disposed = false;
+                    }
+                    index.ParsePaths();
                     var readOnlyDictionary = index.Files;
                     foreach (var (key, fileRecord) in readOnlyDictionary)
                     {
@@ -182,7 +197,7 @@ public partial class Program
                             continue;
                         if (whetherModifyUiSetting && UiSettingPaths.Contains(fileRecordPath))
                         {
-                            Console.WriteLine($"正在应用字体...");
+                            Console.WriteLine($"正在应用字体到 {fileRecordPath} ...");
                             var bytes = fileRecord.Read().ToArray();
                             var encoding = Encoding.GetEncoding("utf-16le");
                             var fileContent = encoding.GetString(bytes);
@@ -195,8 +210,9 @@ public partial class Program
                                 {
                                     if (!fontIsEmpty)
                                     {
-                                        line = TypefaceRegex().Replace(line, $"typeface=\"{font}\"");                                        
+                                        line = TypefaceRegex().Replace(line, $"typeface=\"{font}\"");
                                     }
+
                                     if (fontSizeDelta.HasValue && fontSizeDelta != 0)
                                     {
                                         var fontSizeStr = FontSizeRegex().Match(line).Groups[1].Value;
@@ -290,28 +306,24 @@ public partial class Program
                             }
                         }
                     }
+
+                    index.Save();
                 }
-                Console.WriteLine("太好了，没有出现bug");
+
                 context.ExitCode = ExitCode.Success;
             }
             catch (Exception e)
             {
-                Console.WriteLine("哦吼，出现了一些问题~");
+                Console.WriteLine("执行过程中出错：");
                 context.Console.WriteLine(e.Message);
                 context.ExitCode = ExitCode.Error;
             }
             finally
             {
-                Console.WriteLine($"正在保存 {path.Name}");
-                if (ggpk != null)
+                if (!disposed)
                 {
-                    ggpk.Index.Save();
-                    ggpk.Dispose();
-                }
-                else if (index != null)
-                {
-                    index.Save();
-                    index.Dispose();
+                    ggpk?.Dispose();
+                    index?.Dispose();
                 }
                 Console.WriteLine("执行结束");
             }
