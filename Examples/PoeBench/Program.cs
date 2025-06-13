@@ -53,24 +53,24 @@ public partial class Program
         {
             Console.WriteLine(JsonSerializer.Serialize(GetInstalledFonts(), JsonSerializerOptions));
         });
-        
+
         // 获取游戏安装路径
         var getGameInstallPathCommand = new Command("get-game-install-path", "Get game install path");
-        var platformOption = new Option<string>(aliases: ["--platform"], description: "Game platform") {IsRequired = true};
-        var versionOption = new Option<int>(aliases: ["--version"], description: "Game version") {IsRequired = true};
+        var platformOption = new Option<string>(aliases: ["--platform"], description: "Game platform")
+            { IsRequired = true };
+        var versionOption = new Option<int>(aliases: ["--version"], description: "Game version") { IsRequired = true };
         getGameInstallPathCommand.Add(platformOption);
         getGameInstallPathCommand.Add(versionOption);
-        getGameInstallPathCommand.SetHandler((platform, version) =>
-        {
-            Console.WriteLine(GetGameInstallPath(platform, version));
-        }, platformOption, versionOption);
+        getGameInstallPathCommand.SetHandler(
+            (platform, version) => { Console.WriteLine(GetGameInstallPath(platform, version)); }, platformOption,
+            versionOption);
         rootCommand.Add(getGameInstallPathCommand);
-        
+
         // 打补丁、更换字体等
         var patchCommand = new Command("patch", "Patch GGPK");
         var pathOption = new Option<FileInfo>(aliases: ["--path", "-p"], description: "Path to GGPK/Index file")
             { IsRequired = true };
-        var patchOption = new Option<FileInfo>(aliases: ["--patch-file", "-pf"], description: "Path to patch file");
+        var patchOption = new Option<FileInfo[]>(aliases: ["--patch-file", "-pf"], description: "Path to patch file");
         var fontOption = new Option<string>(aliases: ["--font"], description: "Change in-game font");
         var fontSizeAdjustOption = new Option<int?>(aliases: ["--font-size-delta"],
             description:
@@ -90,7 +90,7 @@ public partial class Program
         patchCommand.SetHandler(async (context) =>
         {
             var path = context.ParseResult.GetValueForOption(pathOption)!;
-            var patch = context.ParseResult.GetValueForOption(patchOption);
+            var patchArray = context.ParseResult.GetValueForOption(patchOption);
             var font = context.ParseResult.GetValueForOption(fontOption);
             var fontSizeAdjust = context.ParseResult.GetValueForOption(fontSizeAdjustOption);
             var removeMinimapFog = context.ParseResult.GetValueForOption(removeMinimapFogOption);
@@ -100,6 +100,7 @@ public partial class Program
             LibBundle3.Index index = null;
             try
             {
+                Console.WriteLine($"正在读取 {path.FullName}");
                 if (path.FullName.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
                 {
                     index = new LibBundle3.Index(path.FullName);
@@ -110,43 +111,60 @@ public partial class Program
                     index = ggpk.Index;
                 }
                 index.ParsePaths();
-                
-                if (patch is { Exists: true })
+
+                if (patchArray != null)
                 {
-                    var zip = ZipFile.OpenRead(patch.FullName);
-                    try
+                    foreach (var patch in patchArray)
                     {
-                        var total = zip.Entries.Count(e => !e.FullName.EndsWith('/'));
-                        await Task.Run(() =>
+                        if (patch is { Exists: true })
                         {
-                            if (zip.Entries.Any(e => e.FullName.Equals("Bundles2/_.index.bin", StringComparison.OrdinalIgnoreCase))) {
-                                if (ggpk is null) {
-                                    zip.ExtractToDirectory(Path.GetDirectoryName(Path.GetDirectoryName(path.FullName))!, true);
-                                    total = 0;
-                                } else {
-                                    total -= GGPK.Replace(ggpk.Root, zip.Entries, (fr, p, added) =>
+                            Console.WriteLine($"正在安装补丁 {patch.Name}");
+                            var zip = ZipFile.OpenRead(patch.FullName);
+                            try
+                            {
+                                var total = zip.Entries.Count(e => !e.FullName.EndsWith('/'));
+                                await Task.Run(() =>
+                                {
+                                    if (zip.Entries.Any(e =>
+                                            e.FullName.Equals("Bundles2/_.index.bin",
+                                                StringComparison.OrdinalIgnoreCase)))
                                     {
-                                        Console.WriteLine($"{(added ? "已添加: " : "已替换: ")}{p}");
-                                        return false;
-                                    }, allowAdd: true);
-                                }
-                            } else {
-                                total -= LibBundle3.Index.Replace(index, zip.Entries, (fr, p) => {
-                                    Console.WriteLine($"已替换: {p}");
-                                    return false;
+                                        if (ggpk is null)
+                                        {
+                                            zip.ExtractToDirectory(
+                                                Path.GetDirectoryName(Path.GetDirectoryName(path.FullName))!, true);
+                                            total = 0;
+                                        }
+                                        else
+                                        {
+                                            total -= GGPK.Replace(ggpk.Root, zip.Entries, (fr, p, added) =>
+                                            {
+                                                Console.WriteLine($"{(added ? "已添加: " : "已替换: ")}{p}");
+                                                return false;
+                                            }, allowAdd: true);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        total -= LibBundle3.Index.Replace(index, zip.Entries, (fr, p) =>
+                                        {
+                                            Console.WriteLine($"已替换: {p}");
+                                            return false;
+                                        });
+                                    }
                                 });
+                                Console.WriteLine(total > 0 ? $"错误: {total} 个文件应用失败！" : $"补丁 {patch.Name} 应用成功");
                             }
-                        });
-                        Console.WriteLine(total > 0 ? $"错误: {total} 个文件应用失败！" : "补丁应用成功！");
+                            finally
+                            {
+                                zip.Dispose();
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine($"补丁 {patch.FullName} 不存在，已跳过");
+                        }
                     }
-                    finally
-                    {
-                        zip.Dispose();
-                    }
-                }
-                else
-                {
-                    Console.WriteLine("未选择补丁文件或补丁文件不存在，跳过打补丁动作");
                 }
 
                 var whetherModifyUiSetting = !string.IsNullOrWhiteSpace(font);
@@ -212,7 +230,7 @@ public partial class Program
 
                         if (removeMinimapFog.HasValue && MinimapVisibilityPixelPath.Equals(fileRecordPath))
                         {
-                            Console.WriteLine("正在修改小地图透明度...");
+                            Console.WriteLine("正在前往狮眼守望...");
                             var bytes = fileRecord.Read().ToArray();
                             var encoding = Encoding.GetEncoding("utf-8");
                             var fileContent = encoding.GetString(bytes);
@@ -232,7 +250,7 @@ public partial class Program
 
                         if (cameraZoom.HasValue && CameraZoomNodePath.Equals(fileRecordPath))
                         {
-                            Console.WriteLine("正在调整视距...");
+                            Console.WriteLine("正在寻找扎娜...");
                             var bytes = fileRecord.Read().ToArray();
                             var encoding = Encoding.GetEncoding("utf-16le");
                             var fileContent = encoding.GetString(bytes);
@@ -269,16 +287,18 @@ public partial class Program
                         }
                     }
                 }
-                Console.WriteLine("应用成功！");
+                Console.WriteLine("太好了，没有出现bug");
                 context.ExitCode = ExitCode.Success;
             }
             catch (Exception e)
             {
+                Console.WriteLine("哦吼，出现了一些问题~");
                 context.Console.WriteLine(e.Message);
                 context.ExitCode = ExitCode.Error;
             }
             finally
             {
+                Console.WriteLine($"正在保存 {path.Name}");
                 if (ggpk != null)
                 {
                     ggpk.Index.Save();
@@ -289,7 +309,7 @@ public partial class Program
                     index.Save();
                     index.Dispose();
                 }
-                Console.WriteLine($"正在保存 {path.Name}");
+                Console.WriteLine("执行结束");
             }
         });
         return await rootCommand.InvokeAsync(args);
@@ -301,7 +321,7 @@ public partial class Program
         var fontFamilies = installedFontCollection.Families;
         return fontFamilies.Select(fontFamily => fontFamily.GetName(0)).ToList();
     }
-    
+
     static string? GetGameInstallPath(string platform, int version)
     {
         string foldersKey;
@@ -311,24 +331,28 @@ public partial class Program
                 foldersKey = @"Software\Tencent\流放之路";
                 break;
             case "GGG":
-                foldersKey = version == 1 ?  @"Software\GrindingGearGames\Path of Exile" : @"Software\GrindingGearGames\Path of Exile 2";
+                foldersKey = version == 1
+                    ? @"Software\GrindingGearGames\Path of Exile"
+                    : @"Software\GrindingGearGames\Path of Exile 2";
                 break;
             default:
                 return null;
         }
 
         using var key = Registry.CurrentUser.OpenSubKey(foldersKey);
-        var value = "TENCENT".Equals(platform) ? key?.GetValue("InstallPath"): key?.GetValue("InstallLocation");
+        var value = "TENCENT".Equals(platform) ? key?.GetValue("InstallPath") : key?.GetValue("InstallLocation");
         if (value is not string s) return null;
         if (!value.ToString()!.EndsWith(Path.DirectorySeparatorChar.ToString()))
         {
             value += Path.DirectorySeparatorChar.ToString();
         }
+
         var ggpk = value + "Content.ggpk";
         if (File.Exists(ggpk))
         {
             return ggpk;
         }
+
         var indexBin = value + "Bundles2\\_.index.bin";
         return File.Exists(indexBin) ? indexBin : null;
     }
