@@ -72,7 +72,7 @@ public partial class Program
             { IsRequired = true };
         var patchOption = new Option<FileInfo[]>(aliases: ["--patch-file", "-pf"], description: "Path to patch file");
         var fontOption = new Option<string>(aliases: ["--font"], description: "Change in-game font");
-        var fontSizeAdjustOption = new Option<int?>(aliases: ["--font-size-delta"],
+        var fontSizeDeltaOption = new Option<int?>(aliases: ["--font-size-delta"],
             description:
             "Relative font size adjustment (positive values increase size, negative values decrease size)");
         var removeMinimapFogOption = new Option<bool?>(aliases: ["--remove-minimap-fog"],
@@ -82,7 +82,7 @@ public partial class Program
         patchCommand.Add(pathOption);
         patchCommand.Add(patchOption);
         patchCommand.Add(fontOption);
-        patchCommand.Add(fontSizeAdjustOption);
+        patchCommand.Add(fontSizeDeltaOption);
         patchCommand.Add(removeMinimapFogOption);
         patchCommand.Add(cameraZoomOption);
         rootCommand.Add(patchCommand);
@@ -92,7 +92,7 @@ public partial class Program
             var path = context.ParseResult.GetValueForOption(pathOption)!;
             var patchArray = context.ParseResult.GetValueForOption(patchOption);
             var font = context.ParseResult.GetValueForOption(fontOption);
-            var fontSizeAdjust = context.ParseResult.GetValueForOption(fontSizeAdjustOption);
+            var fontSizeDelta = context.ParseResult.GetValueForOption(fontSizeDeltaOption);
             var removeMinimapFog = context.ParseResult.GetValueForOption(removeMinimapFogOption);
             var cameraZoom = context.ParseResult.GetValueForOption(cameraZoomOption);
 
@@ -167,7 +167,8 @@ public partial class Program
                     }
                 }
 
-                var whetherModifyUiSetting = !string.IsNullOrWhiteSpace(font);
+                var fontIsEmpty = string.IsNullOrWhiteSpace(font);
+                var whetherModifyUiSetting = !fontIsEmpty || (fontSizeDelta.HasValue && fontSizeDelta.Value != 0);
                 if (whetherModifyUiSetting || removeMinimapFog.HasValue || cameraZoom.HasValue)
                 {
                     var readOnlyDictionary = index.Files;
@@ -192,18 +193,21 @@ public partial class Program
                                 var line = lines[i];
                                 if (line.Trim().StartsWith("<Font") && line.Contains("typeface"))
                                 {
-                                    line = TypefaceRegex().Replace(line, $"typeface=\"{font}\"");
-                                    if (fontSizeAdjust.HasValue && fontSizeAdjust != 0)
+                                    if (!fontIsEmpty)
+                                    {
+                                        line = TypefaceRegex().Replace(line, $"typeface=\"{font}\"");                                        
+                                    }
+                                    if (fontSizeDelta.HasValue && fontSizeDelta != 0)
                                     {
                                         var fontSizeStr = FontSizeRegex().Match(line).Groups[1].Value;
                                         if (int.TryParse(fontSizeStr, out var fontSize))
                                         {
-                                            fontSize += fontSizeAdjust ?? 0;
+                                            fontSize += fontSizeDelta ?? 0;
                                             line = FontSizeRegex().Replace(line, $"size=\"{fontSize}\"");
                                         }
                                     }
                                 }
-                                else if (line.Trim().StartsWith("<FallbackFont"))
+                                else if (!fontIsEmpty && line.Trim().StartsWith("<FallbackFont"))
                                 {
                                     if (line.Contains("ranges=\"CJK\""))
                                     {
