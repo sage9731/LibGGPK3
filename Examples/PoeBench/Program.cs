@@ -104,7 +104,7 @@ public partial class Program
                 Console.WriteLine($"正在读取 {path.FullName}");
                 if (path.FullName.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
                 {
-                    index = await Task.Run(() => new LibBundle3.Index(path.FullName));
+                    index = await Task.Run(() => new LibBundle3.Index(path.FullName, parsePaths: false));
                 }
                 else
                 {
@@ -176,7 +176,7 @@ public partial class Program
                     {
                         if (path.FullName.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
                         {
-                            index = await Task.Run(() => new LibBundle3.Index(path.FullName));
+                            index = await Task.Run(() => new LibBundle3.Index(path.FullName, parsePaths: false));
                         }
                         else
                         {
@@ -344,7 +344,14 @@ public partial class Program
         switch (platform)
         {
             case "TENCENT":
-                foldersKey = @"Software\Tencent\流放之路";
+                if (version == 1)
+                {
+                    foldersKey = @"Software\Tencent\流放之路";                    
+                }
+                else
+                {
+                    foldersKey = @"Software\Rail\Game2002052";
+                }
                 break;
             case "GGG":
                 foldersKey = version == 1
