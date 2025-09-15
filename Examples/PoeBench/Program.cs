@@ -102,11 +102,7 @@ public partial class Program
             try
             {
                 Console.WriteLine($"正在读取 {path.FullName}");
-                if (path.FullName.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
-                {
-                    index = await Task.Run(() => new LibBundle3.Index(path.FullName, parsePaths: false));
-                }
-                else
+                if (!path.FullName.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
                 {
                     ggpk = await Task.Run(() => new BundledGGPK(path.FullName, false));
                     index = ggpk.Index;
@@ -122,17 +118,15 @@ public partial class Program
                             try
                             {
                                 var total = zip.Entries.Count(e => !e.FullName.EndsWith('/'));
-                                if (zip.Entries.Any(e =>
-                                        e.FullName.Equals("Bundles2/_.index.bin",
-                                            StringComparison.OrdinalIgnoreCase)))
+                                if (path.FullName.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
                                 {
-                                    if (ggpk is null)
-                                    {
-                                        zip.ExtractToDirectory(
-                                            Path.GetDirectoryName(Path.GetDirectoryName(path.FullName))!, true);
-                                        total = 0;
-                                    }
-                                    else
+                                    zip.ExtractToDirectory(
+                                        Path.GetDirectoryName(Path.GetDirectoryName(path.FullName))!, true);
+                                    total = 0;
+                                }
+                                else
+                                {
+                                    if (index is null)
                                     {
                                         total -= GGPK.Replace(ggpk.Root, zip.Entries, (fr, p, added) =>
                                         {
@@ -140,14 +134,14 @@ public partial class Program
                                             return false;
                                         }, allowAdd: true);
                                     }
-                                }
-                                else
-                                {
-                                    total -= LibBundle3.Index.Replace(index, zip.Entries, (fr, p) =>
+                                    else
                                     {
-                                        Console.WriteLine($"已替换: {p}");
-                                        return false;
-                                    });
+                                        total -= LibBundle3.Index.Replace(index, zip.Entries, (fr, p) =>
+                                        {
+                                            Console.WriteLine($"已替换: {p}");
+                                            return false;
+                                        });
+                                    }
                                 }
 
                                 Console.WriteLine(total > 0 ? $"错误: {total} 个文件应用失败！" : $"补丁 {patch.Name} 应用成功");
