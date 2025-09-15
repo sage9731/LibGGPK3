@@ -26,6 +26,7 @@ public partial class Program
         "metadata/ui/uisettings.xml",
         "metadata/ui/uisettings.console.xml",
         "metadata/ui/uisettings.tencent.xml",
+        "metadata/ui/uisettings.tencent.console.xml",
         "metadata/ui/uisettings.traditional chinese.xml",
     ];
 
