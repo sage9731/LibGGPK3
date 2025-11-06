@@ -127,11 +127,24 @@ public partial class Program
                                 }
                                 else
                                 {
-                                    total -= GGPK.Replace(ggpk.Root, zip.Entries, (fr, p, added) =>
+                                    if (zip.Entries.Any(e =>
+                                            e.FullName.Equals("Bundles2/_.index.bin",
+                                                StringComparison.OrdinalIgnoreCase)))
                                     {
-                                        Console.WriteLine($"{(added ? "已添加: " : "已替换: ")}{p}");
-                                        return false;
-                                    }, allowAdd: true);
+                                        total -= GGPK.Replace(ggpk.Root, zip.Entries, (fr, p, added) =>
+                                        {
+                                            Console.WriteLine($"{(added ? "已添加: " : "已替换: ")}{p}");
+                                            return false;
+                                        }, allowAdd: true);
+                                    }
+                                    else
+                                    {
+                                        total -= LibBundle3.Index.Replace(index, zip.Entries, (fr, p) =>
+                                        {
+                                            Console.WriteLine($"已替换 {p}");
+                                            return false;
+                                        });
+                                    }
                                 }
 
                                 Console.WriteLine(total > 0 ? $"错误: {total} 个文件应用失败！" : $"补丁 {patch.Name} 应用成功");
