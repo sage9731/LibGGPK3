@@ -184,7 +184,7 @@ public partial class Program
 
                 var fontIsEmpty = string.IsNullOrWhiteSpace(font);
                 var whetherModifyUiSetting = !fontIsEmpty || (fontSizeDelta.HasValue && fontSizeDelta.Value != 0);
-                if (whetherModifyUiSetting || minimapVisibility.HasValue || cameraZoom.HasValue)
+                if (whetherModifyUiSetting || minimapVisibility.HasValue || cameraZoom.HasValue || removeFog.HasValue || removeDarkness.HasValue)
                 {
                     if (disposed)
                     {
@@ -263,19 +263,18 @@ public partial class Program
                         if (minimapVisibility.HasValue && MinimapVisibilityPixelPath.Equals(fileRecordPath))
                         {
                             var bytes = fileRecord.Read().ToArray();
-                            var encoding = Encoding.GetEncoding("utf-16le");
+                            var encoding = Encoding.GetEncoding("utf-8");
                             var fileContent = encoding.GetString(bytes);
                             if (minimapVisibility.Value)
                             {
                                 Console.WriteLine("正在顾全大局...");
                                 fileContent = fileContent.Replace("return res_color;",
-                                    "return max(res_color.r, 0.1f);");
+                                    "return max(res_color.r, 0.15f);");
                             }
                             else
                             {
                                 Console.WriteLine("正在目光短浅...");
-                                fileContent = fileContent.Replace("return max(res_color.r, 0.1f);",
-                                    "return res_color;");
+                                fileContent = Regex.Replace(fileContent, @"return max\(res_color\.r, \d+(\.\d+)?f\);", "return res_color;");
                             }
 
                             var outBytes = encoding.GetBytes(fileContent);
