@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Diagnostics.CodeAnalysis;
 using System.CommandLine;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Serialization.Metadata;
 using System.Text.RegularExpressions;
@@ -33,6 +34,15 @@ public partial class Program
     private static readonly string MinimapVisibilityPixelPath = "shaders/minimap_visibility_pixel.hlsl";
 
     private static readonly string CameraZoomNodePath = "metadata/characters/character.ot";
+
+    [GeneratedRegex(".*environmentsettings/.*\\.env$")]
+    private static partial Regex EnvironmentSettingsRegex();
+
+    [GeneratedRegex(".*shaders/bloomcutoff\\\\.hlsl$")]
+    private static partial Regex bloomCutOffShadersRegex();
+
+    [GeneratedRegex(".*shaders/bloomgather\\\\.hlsl$")]
+    private static partial Regex bloomGatherShadersRegex();
 
     [GeneratedRegex("fonts=\".*?\"")]
     private static partial Regex FontsRegex();
@@ -76,15 +86,19 @@ public partial class Program
         var fontSizeDeltaOption = new Option<int?>(aliases: ["--font-size-delta"],
             description:
             "Relative font size adjustment (positive values increase size, negative values decrease size)");
-        var removeMinimapFogOption = new Option<bool?>(aliases: ["--remove-minimap-fog"],
-            description: "whether remove minimap fog");
+        var minimapVisibilityOption = new Option<bool?>(aliases: ["--minimap-visibility"],
+            description: "set minimap visibility");
+        var removeFogOption = new Option<bool?>(aliases: ["--remove-fog"], description: "remove fog");
+        var removeDarknessOption = new Option<bool?>(aliases: ["--remove-darkness"], description: "remove darkness");
         var cameraZoomOption =
             new Option<float?>(aliases: ["--camera-zoom"], description: "change camera zoom");
         patchCommand.Add(pathOption);
         patchCommand.Add(patchOption);
         patchCommand.Add(fontOption);
         patchCommand.Add(fontSizeDeltaOption);
-        patchCommand.Add(removeMinimapFogOption);
+        patchCommand.Add(minimapVisibilityOption);
+        patchCommand.Add(removeFogOption);
+        patchCommand.Add(removeDarknessOption);
         patchCommand.Add(cameraZoomOption);
         rootCommand.Add(patchCommand);
 
@@ -94,11 +108,13 @@ public partial class Program
             var patchArray = context.ParseResult.GetValueForOption(patchOption);
             var font = context.ParseResult.GetValueForOption(fontOption);
             var fontSizeDelta = context.ParseResult.GetValueForOption(fontSizeDeltaOption);
-            var removeMinimapFog = context.ParseResult.GetValueForOption(removeMinimapFogOption);
+            var minimapVisibility = context.ParseResult.GetValueForOption(minimapVisibilityOption);
+            var removeFog = context.ParseResult.GetValueForOption(removeFogOption);
+            var removeDarkness = context.ParseResult.GetValueForOption(removeDarknessOption);
             var cameraZoom = context.ParseResult.GetValueForOption(cameraZoomOption);
 
             BundledGGPK? ggpk = null;
-            LibBundle3.Index index = null;                
+            LibBundle3.Index index = null;
             var disposed = false;
             try
             {
@@ -108,6 +124,7 @@ public partial class Program
                     ggpk = await Task.Run(() => new BundledGGPK(path.FullName, false));
                     index = ggpk.Index;
                 }
+
                 if (patchArray != null)
                 {
                     foreach (var patch in patchArray)
@@ -167,7 +184,7 @@ public partial class Program
 
                 var fontIsEmpty = string.IsNullOrWhiteSpace(font);
                 var whetherModifyUiSetting = !fontIsEmpty || (fontSizeDelta.HasValue && fontSizeDelta.Value != 0);
-                if (whetherModifyUiSetting || removeMinimapFog.HasValue || cameraZoom.HasValue)
+                if (whetherModifyUiSetting || minimapVisibility.HasValue || cameraZoom.HasValue)
                 {
                     if (disposed)
                     {
@@ -180,18 +197,16 @@ public partial class Program
                             ggpk = await Task.Run(() => new BundledGGPK(path.FullName, false));
                             index = ggpk.Index;
                         }
+
                         disposed = false;
                     }
+
                     index.ParsePaths();
                     var readOnlyDictionary = index.Files;
                     foreach (var (key, fileRecord) in readOnlyDictionary)
                     {
                         var fileRecordPath = fileRecord.Path;
                         if (string.IsNullOrEmpty(fileRecordPath)) continue;
-                        if ((!UiSettingPaths.Contains(fileRecordPath) || !whetherModifyUiSetting) &&
-                            (!MinimapVisibilityPixelPath.Equals(fileRecordPath) || !removeMinimapFog.HasValue) &&
-                            (!CameraZoomNodePath.Equals(fileRecordPath) || !cameraZoom.HasValue))
-                            continue;
                         if (whetherModifyUiSetting && UiSettingPaths.Contains(fileRecordPath))
                         {
                             Console.WriteLine($"正在应用字体到 {fileRecordPath} ...");
@@ -245,29 +260,57 @@ public partial class Program
                             }
                         }
 
-                        if (removeMinimapFog.HasValue && MinimapVisibilityPixelPath.Equals(fileRecordPath))
+                        if (minimapVisibility.HasValue && MinimapVisibilityPixelPath.Equals(fileRecordPath))
                         {
-                            Console.WriteLine("正在前往狮眼守望...");
                             var bytes = fileRecord.Read().ToArray();
-                            var encoding = Encoding.GetEncoding("utf-8");
+                            var encoding = Encoding.GetEncoding("utf-16le");
                             var fileContent = encoding.GetString(bytes);
-
-                            var lines = fileContent.Split("\r\n");
-                            var i = Array.FindIndex(lines, line => line.Contains("if(visibility_reset > 0.5f)")) + 1;
-                            if (i > 0)
+                            if (minimapVisibility.Value)
                             {
-                                lines[i] = removeMinimapFog.Value
-                                    ? "\t\tres_color = float4(0.17f, 0.0f, 0.0f, 1.0f);"
-                                    : "\t\tres_color = float4(0.0f, 0.0f, 0.0f, 1.0f);";
-                                var newFileContent = string.Join("\r\n", lines);
-                                var outBytes = encoding.GetBytes(newFileContent);
-                                fileRecord.Write(outBytes);
+                                Console.WriteLine("正在顾全大局...");
+                                fileContent = fileContent.Replace("return res_color;",
+                                    "return max(res_color.r, 0.1f);");
                             }
+                            else
+                            {
+                                Console.WriteLine("正在目光短浅...");
+                                fileContent = fileContent.Replace("return max(res_color.r, 0.1f);",
+                                    "return res_color;");
+                            }
+
+                            var outBytes = encoding.GetBytes(fileContent);
+                            fileRecord.Write(outBytes);
+                        }
+
+                        if (EnvironmentSettingsRegex().IsMatch(fileRecordPath))
+                        {
+                            var bytes = fileRecord.Read().ToArray();
+                            var encoding = Encoding.GetEncoding("utf-16le");
+                            var fileContent = encoding.GetString(bytes);
+                            if (removeFog.HasValue)
+                            {
+                                if (removeFog.Value)
+                                {
+                                    Console.WriteLine("正在驱散迷雾... " + fileRecordPath);
+                                    // 添加 # 号，使用单词边界避免部分匹配
+                                    fileContent = Regex.Replace(fileContent, @"(fog|area|water|post_transform)", "#$1#",
+                                        RegexOptions.IgnoreCase);
+                                }
+                                else
+                                {
+                                    Console.WriteLine("正在步入迷雾... " + fileRecordPath);
+                                    // 移除 # 号，同样使用单词边界
+                                    fileContent = Regex.Replace(fileContent, @"#+(fog|area|water|post_transform)#+", "$1",
+                                        RegexOptions.IgnoreCase);
+                                }
+                            }
+
+                            var outBytes = encoding.GetBytes(fileContent);
+                            fileRecord.Write(outBytes);
                         }
 
                         if (cameraZoom.HasValue && CameraZoomNodePath.Equals(fileRecordPath))
                         {
-                            Console.WriteLine("正在寻找扎娜...");
                             var bytes = fileRecord.Read().ToArray();
                             var encoding = Encoding.GetEncoding("utf-16le");
                             var fileContent = encoding.GetString(bytes);
@@ -285,6 +328,8 @@ public partial class Program
                                 {
                                     cameraZoom = 3;
                                 }
+
+                                Console.WriteLine("正在调整焦距 x" + cameraZoom + "...");
 
                                 var script =
                                     $"on_initial_position_set = \"CreateCameraZoomNode(1000000000.0f, 1000000000.0f, {cameraZoom.Value}f);\"";
@@ -322,10 +367,101 @@ public partial class Program
                     ggpk?.Dispose();
                     index?.Dispose();
                 }
+
                 Console.WriteLine("执行结束");
             }
         });
         return await rootCommand.InvokeAsync(args);
+    }
+
+    /// <summary>
+    /// 备份文件记录到用户目录下的指定文件夹
+    /// </summary>
+    /// <param name="fileRecordPath">原文件路径（用于生成MD5文件名）</param>
+    /// <param name="fileContent">要备份的文件内容</param>
+    public static void BackupFileRecord(string fileRecordPath, string fileContent)
+    {
+        // 获取备份目录路径
+        string backupDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".poe-bench",
+            "backup"
+        );
+
+        // 如果目录不存在则创建[8](@ref)
+        if (!Directory.Exists(backupDir))
+        {
+            Directory.CreateDirectory(backupDir);
+        }
+
+        // 计算文件路径的MD5值作为文件名
+        string md5FileName = ComputeMD5(fileRecordPath);
+        string backupFilePath = Path.Combine(backupDir, md5FileName);
+
+        try
+        {
+            // 使用UTF-16LE编码将内容写入文件，文件已存在时会自动替换[2,3](@ref)
+            File.WriteAllText(backupFilePath, fileContent, Encoding.Unicode);
+        }
+        catch (Exception ex)
+        {
+            throw new Exception($"备份文件失败: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// 读取备份的文件记录内容
+    /// </summary>
+    /// <param name="fileRecordPath">原文件路径（用于生成MD5文件名）</param>
+    /// <returns>备份的文件内容，如果备份不存在则返回null</returns>
+    public static string GetFileRecordBackup(string fileRecordPath)
+    {
+        // 获取备份目录路径
+        string backupDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".poe-bench",
+            "backup"
+        );
+
+        // 计算文件路径的MD5值作为文件名
+        string md5FileName = ComputeMD5(fileRecordPath);
+        string backupFilePath = Path.Combine(backupDir, md5FileName);
+
+        // 检查备份文件是否存在[7](@ref)
+        if (!File.Exists(backupFilePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            // 使用UTF-16LE编码读取文件内容[3](@ref)
+            return File.ReadAllText(backupFilePath, Encoding.Unicode);
+        }
+        catch (Exception ex)
+        {
+            throw new Exception($"读取备份文件失败: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// 计算字符串的MD5哈希值
+    /// </summary>
+    private static string ComputeMD5(string input)
+    {
+        using (MD5 md5 = MD5.Create())
+        {
+            byte[] inputBytes = Encoding.UTF8.GetBytes(input);
+            byte[] hashBytes = md5.ComputeHash(inputBytes);
+
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < hashBytes.Length; i++)
+            {
+                sb.Append(hashBytes[i].ToString("x2"));
+            }
+
+            return sb.ToString();
+        }
     }
 
     static List<string> GetInstalledFonts()
@@ -343,12 +479,13 @@ public partial class Program
             case "TENCENT":
                 if (version == 1)
                 {
-                    foldersKey = @"Software\Tencent\流放之路";                    
+                    foldersKey = @"Software\Tencent\流放之路";
                 }
                 else
                 {
                     foldersKey = @"Software\Rail\Game2002052";
                 }
+
                 break;
             case "GGG":
                 foldersKey = version == 1
