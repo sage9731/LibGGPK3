@@ -284,7 +284,7 @@ public partial class Program
                             fileRecord.Write(outBytes);
                         }
 
-                        if (EnvironmentSettingsRegex().IsMatch(fileRecordPath))
+                        if ((removeFog.HasValue || lightUp.HasValue) && EnvironmentSettingsRegex().IsMatch(fileRecordPath))
                         {
                             var bytes = fileRecord.Read().ToArray();
                             var encoding = Encoding.GetEncoding("utf-16le");
@@ -351,12 +351,12 @@ public partial class Program
                                                 directionaLightObj["original_multiplier"] =
                                                     multiplierElement.GetSingle();
                                             }
-
+                                            // 获取原始乘数值
+                                            float originalMultiplier = directionaLightObj["original_multiplier"].GetValue<float>();
                                             // 处理光照调节
                                             if (lightUp > 0)
                                             {
-                                                float currentMultiplier = multiplierElement.GetSingle();
-                                                if (currentMultiplier < lightUp.Value)
+                                                if (lightUp.Value > originalMultiplier)
                                                 {
                                                     Console.WriteLine("正在点亮环境..." + fileRecordPath);
                                                     directionaLightObj["multiplier"] = lightUp.Value;
