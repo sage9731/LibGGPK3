@@ -5,6 +5,7 @@ using System.CommandLine;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
 using System.Text.RegularExpressions;
 using LibBundledGGPK3;
@@ -89,7 +90,7 @@ public partial class Program
         var minimapVisibilityOption = new Option<bool?>(aliases: ["--minimap-visibility"],
             description: "set minimap visibility");
         var removeFogOption = new Option<bool?>(aliases: ["--remove-fog"], description: "remove fog");
-        var removeDarknessOption = new Option<bool?>(aliases: ["--remove-darkness"], description: "remove darkness");
+        var lightUpOption = new Option<float?>(aliases: ["--light-up"], description: "light up the environment");
         var cameraZoomOption =
             new Option<float?>(aliases: ["--camera-zoom"], description: "change camera zoom");
         patchCommand.Add(pathOption);
@@ -98,7 +99,7 @@ public partial class Program
         patchCommand.Add(fontSizeDeltaOption);
         patchCommand.Add(minimapVisibilityOption);
         patchCommand.Add(removeFogOption);
-        patchCommand.Add(removeDarknessOption);
+        patchCommand.Add(lightUpOption);
         patchCommand.Add(cameraZoomOption);
         rootCommand.Add(patchCommand);
 
@@ -110,7 +111,7 @@ public partial class Program
             var fontSizeDelta = context.ParseResult.GetValueForOption(fontSizeDeltaOption);
             var minimapVisibility = context.ParseResult.GetValueForOption(minimapVisibilityOption);
             var removeFog = context.ParseResult.GetValueForOption(removeFogOption);
-            var removeDarkness = context.ParseResult.GetValueForOption(removeDarknessOption);
+            var lightUp = context.ParseResult.GetValueForOption(lightUpOption);
             var cameraZoom = context.ParseResult.GetValueForOption(cameraZoomOption);
 
             BundledGGPK? ggpk = null;
@@ -184,7 +185,8 @@ public partial class Program
 
                 var fontIsEmpty = string.IsNullOrWhiteSpace(font);
                 var whetherModifyUiSetting = !fontIsEmpty || (fontSizeDelta.HasValue && fontSizeDelta.Value != 0);
-                if (whetherModifyUiSetting || minimapVisibility.HasValue || cameraZoom.HasValue || removeFog.HasValue || removeDarkness.HasValue)
+                if (whetherModifyUiSetting || minimapVisibility.HasValue || cameraZoom.HasValue || removeFog.HasValue ||
+                    lightUp.HasValue)
                 {
                     if (disposed)
                     {
@@ -274,7 +276,8 @@ public partial class Program
                             else
                             {
                                 Console.WriteLine("正在目光短浅...");
-                                fileContent = Regex.Replace(fileContent, @"return max\(res_color\.r, \d+(\.\d+)?f\);", "return res_color;");
+                                fileContent = Regex.Replace(fileContent, @"return max\(res_color\.r, \d+(\.\d+)?f\);",
+                                    "return res_color;");
                             }
 
                             var outBytes = encoding.GetBytes(fileContent);
@@ -299,8 +302,91 @@ public partial class Program
                                 {
                                     Console.WriteLine("正在步入迷雾... " + fileRecordPath);
                                     // 移除 # 号，同样使用单词边界
-                                    fileContent = Regex.Replace(fileContent, @"#+(fog|area|water|post_transform)#+", "$1",
+                                    fileContent = Regex.Replace(fileContent, @"#+(fog|area|water|post_transform)#+",
+                                        "$1",
                                         RegexOptions.IgnoreCase);
+                                }
+                            }
+
+                            if (lightUp.HasValue)
+                            {
+                                if (lightUp > 3)
+                                {
+                                    lightUp = 3;
+                                }
+                                
+                                // 将fileContent转换成JSON对象
+                                try
+                                {
+                                    var bom = "";
+                                    if (fileContent.Length > 0 && fileContent[0] == '\uFEFF')
+                                    {
+                                        bom = "\uFEFF";
+                                        fileContent = fileContent.Substring(1);
+                                    }
+                                    using var jsonDocument = JsonDocument.Parse(fileContent);
+                                    var root = jsonDocument.RootElement;
+
+                                    // 检查是否存在 directional_light.multiplier
+                                    if (root.TryGetProperty("directional_light", out var directionaLight) &&
+                                        directionaLight.ValueKind == JsonValueKind.Object)
+                                    {
+                                        if (directionaLight.TryGetProperty("multiplier", out var multiplierElement) &&
+                                            multiplierElement.ValueKind == JsonValueKind.Number)
+                                        {
+                                            // 创建可写的JSON对象
+                                            var jsonObject = JsonObject.Create(jsonDocument.RootElement.Clone());
+
+                                            // 确保directional_light对象存在
+                                            if (!jsonObject.ContainsKey("directional_light"))
+                                            {
+                                                jsonObject["directional_light"] = new JsonObject();
+                                            }
+
+                                            var directionaLightObj = jsonObject["directional_light"].AsObject();
+
+                                            // 如果对象不存在 directional_light.original_multiplier，则进行备份
+                                            if (!directionaLightObj.ContainsKey("original_multiplier"))
+                                            {
+                                                directionaLightObj["original_multiplier"] =
+                                                    multiplierElement.GetSingle();
+                                            }
+
+                                            // 处理光照调节
+                                            if (lightUp > 0)
+                                            {
+                                                float currentMultiplier = multiplierElement.GetSingle();
+                                                if (currentMultiplier < lightUp.Value)
+                                                {
+                                                    Console.WriteLine("正在点亮环境..." + fileRecordPath);
+                                                    directionaLightObj["multiplier"] = lightUp.Value;
+                                                }
+                                            }
+                                            else if (lightUp <= 0)
+                                            {
+                                                if (directionaLightObj.ContainsKey("original_multiplier"))
+                                                {
+                                                    Console.WriteLine("正在复原光亮..." + fileRecordPath);
+                                                    directionaLightObj["multiplier"] =
+                                                        directionaLightObj["original_multiplier"].GetValue<float>();
+                                                }
+                                            }
+
+                                            // 将JSON对象转换回字符串，格式化缩进为2个空格
+                                            var newJsonContent = jsonObject.ToJsonString(new JsonSerializerOptions
+                                            {
+                                                WriteIndented = true,
+                                                Encoder = System.Text.Encodings.Web.JavaScriptEncoder
+                                                    .UnsafeRelaxedJsonEscaping
+                                            });
+                                            fileContent = bom + newJsonContent;
+                                        }
+                                    }
+                                }
+                                catch (JsonException)
+                                {
+                                    // 如果JSON解析失败，保持原内容不变
+                                    Console.WriteLine($"警告: {fileRecordPath} 不是有效的JSON格式，跳过光照调节");
                                 }
                             }
 
