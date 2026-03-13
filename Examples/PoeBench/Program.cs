@@ -417,7 +417,7 @@ public partial class Program
                                 Console.WriteLine("正在调整焦距 x" + cameraZoom + "...");
 
                                 var script =
-                                    $"on_initial_position_set = \"CreateCameraZoomNode(1000000000.0f, 1000000000.0f, {cameraZoom.Value}f);\"";
+                                    $"on_initial_position_set = {{CreateCameraZoomNode(1000000000.0f, 1000000000.0f, {cameraZoom.Value}f);}}";
                                 if (line.Contains("CreateCameraZoomNode"))
                                 {
                                     lines[i] = script;
