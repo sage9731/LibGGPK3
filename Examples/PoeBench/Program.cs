@@ -294,16 +294,17 @@ public partial class Program
                                 if (removeFog.Value)
                                 {
                                     Console.WriteLine("正在驱散迷雾... " + fileRecordPath);
-                                    // 添加 # 号，使用单词边界避免部分匹配
-                                    fileContent = Regex.Replace(fileContent, @"(fog|area|water|post_transform)", "#$1#",
+                                    // 仅替换双引号内的特定单词，例如 "fog" -> "#fog#"
+                                    fileContent = Regex.Replace(fileContent, @"""\b(fog|area|water|post_transform)\b""", 
+                                        "\"#$1#\"", 
                                         RegexOptions.IgnoreCase);
                                 }
                                 else
                                 {
                                     Console.WriteLine("正在步入迷雾... " + fileRecordPath);
-                                    // 移除 # 号，同样使用单词边界
-                                    fileContent = Regex.Replace(fileContent, @"#+(fog|area|water|post_transform)#+",
-                                        "$1",
+                                    // 仅替换双引号内被 # 号包裹的单词，例如 "#fog#" -> "fog"
+                                    fileContent = Regex.Replace(fileContent, @"""#+(fog|area|water|post_transform)#+""", 
+                                        "\"$1\"", 
                                         RegexOptions.IgnoreCase);
                                 }
                             }
